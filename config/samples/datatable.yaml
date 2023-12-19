@@ -1,0 +1,12 @@
+apiVersion: data.fluid.io/v1alpha1
+kind: DataTable
+metadata:
+  name: stores
+spec:
+  intelligentCache: false
+  url: 210.28.132.15:10000
+  schemas:
+    - schemaName: tpcds
+      tables:
+        - tableName: store
+        - tableName: store_sales

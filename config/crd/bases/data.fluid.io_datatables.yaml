@@ -1,0 +1,182 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.5.0
+  creationTimestamp: null
+  name: datatables.data.fluid.io
+spec:
+  group: data.fluid.io
+  names:
+    kind: DataTable
+    listKind: DataTableList
+    plural: datatables
+    singular: datatable
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: DataTable is the Schema for the datatables API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: DataTableSpec defines the desired state of DataTable
+            properties:
+              intelligentCache:
+                description: need to cache intelligently.
+                type: boolean
+              runtimes:
+                description: Runtimes for supporting dataset (e.g. AlluxioRuntime)
+                items:
+                  description: Runtime describes a runtime to be used to support dataset
+                  properties:
+                    masterReplicas:
+                      description: Runtime master replicas
+                      format: int32
+                      type: integer
+                    name:
+                      description: Name of the runtime object
+                      type: string
+                    namespace:
+                      description: Namespace of the runtime object
+                      type: string
+                    type:
+                      description: Runtime object's type (e.g. Alluxio)
+                      type: string
+                  type: object
+                type: array
+              schemas:
+                items:
+                  description: '----------------------------------------------------------------------------------------------------- Schema indicates the database.'
+                  properties:
+                    schemaName:
+                      type: string
+                    tables:
+                      items:
+                        properties:
+                          columnName:
+                            description: column infos for this table
+                            items:
+                              type: string
+                            type: array
+                          partitionColumn:
+                            description: partition infos for the partition
+                            items:
+                              additionalProperties:
+                                type: string
+                              type: object
+                            type: array
+                          preUrl:
+                            type: string
+                          tableName:
+                            type: string
+                        required:
+                        - tableName
+                        type: object
+                      type: array
+                  required:
+                  - schemaName
+                  type: object
+                type: array
+              url:
+                description: Mount Points to be mounted on Alluxio.
+                type: string
+            type: object
+          status:
+            description: '--------------------------------------------------------------------------- Datatable defines the observed state of Dataset NOTION: 修改这些字段需要重新安装crd, make install'
+            properties:
+              cacheStates:
+                additionalProperties:
+                  type: string
+                description: CacheStatus represents the total resources of the dataset.
+                type: object
+              conditions:
+                description: Conditions is an array of current observed conditions.
+                items:
+                  description: '---------------------------------------------------------------------------------------------------- DatatableCondition describes the state of the cache at a certain point.'
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status to another.
+                      format: date-time
+                      type: string
+                    lastUpdateTime:
+                      description: The last time this condition was updated.
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about the transition.
+                      type: string
+                    reason:
+                      description: The reason for the condition's last transition.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of cache condition.
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              mounts:
+                description: the info of mount points have been mounted
+                items:
+                  description: '----------------------------------------------------------------------------------------------------- Schema indicates the database.'
+                  properties:
+                    schemaName:
+                      type: string
+                    tables:
+                      items:
+                        properties:
+                          columnName:
+                            description: column infos for this table
+                            items:
+                              type: string
+                            type: array
+                          partitionColumn:
+                            description: partition infos for the partition
+                            items:
+                              additionalProperties:
+                                type: string
+                              type: object
+                            type: array
+                          preUrl:
+                            type: string
+                          tableName:
+                            type: string
+                        required:
+                        - tableName
+                        type: object
+                      type: array
+                  required:
+                  - schemaName
+                  type: object
+                type: array
+              phase:
+                description: 'Dataset Phase. One of the four phases: `Bound`, `NotBound` and `Failed`'
+                type: string
+              ufsTotal:
+                description: Total in GB of dataset in the cluster
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

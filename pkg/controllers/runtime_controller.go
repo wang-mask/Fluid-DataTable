@@ -1,0 +1,361 @@
+/*
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package controllers
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/go-logr/logr"
+	"github.com/pkg/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	// "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	cruntime "Fluid-Datatable/pkg/runtime"
+	corev1 "k8s.io/api/core/v1"
+
+	datav1alpha1 "Fluid-Datatable/api/v1alpha1"
+	"Fluid-Datatable/pkg/common"
+	"Fluid-Datatable/pkg/ddc/base"
+	"Fluid-Datatable/pkg/utils"
+)
+
+// var _ RuntimeReconcilerInterface = (*RuntimeReconciler)(nil)
+
+// RuntimeReconciler is the default implementation
+type RuntimeReconciler struct {
+	client.Client
+	Log      logr.Logger
+	Recorder record.EventRecorder
+	// Real implement
+	implement RuntimeReconcilerInterface
+}
+
+// NewRuntimeReconciler creates the default RuntimeReconciler
+func NewRuntimeReconciler(reconciler RuntimeReconcilerInterface, client client.Client, log logr.Logger, recorder record.EventRecorder) *RuntimeReconciler {
+	r := &RuntimeReconciler{
+		implement: reconciler,
+		Client:    client,
+		Recorder:  recorder,
+		Log:       log,
+	}
+	return r
+}
+
+//TODO  清理所有与Dataset相关的内容，这里的Alluxio集群是可以按照yaml文件自己创建的，如果没有的话则是可以系统默认的集群创建。
+
+// ReconcileInternal handles the logic of reconcile runtime
+func (r *RuntimeReconciler) ReconcileInternal(ctx cruntime.ReconcileRequestContext) (ctrl.Result, error) {
+	// 1.Get the runtime
+	runtime := ctx.Runtime
+	if runtime == nil {
+		return utils.RequeueIfError(fmt.Errorf("failed to find the runtime"))
+	}
+
+	// 2.Get or create the engine
+	engine, err := r.implement.GetOrCreateEngine(ctx)
+	if err != nil {
+		r.Recorder.Eventf(runtime, corev1.EventTypeWarning, common.ErrorProcessRuntimeReason, "Process Runtime error %v", err)
+		return utils.RequeueIfError(errors.Wrap(err, "Failed to create"))
+	}
+
+	// 3.Get the ObjectMeta of runtime
+	objectMeta, err := r.implement.GetRuntimeObjectMeta(ctx)
+	if err != nil {
+		return utils.RequeueIfError(err)
+	}
+
+	/*// 4.Get the dataset
+	dataset, err := r.GetDataset(ctx)
+	if err != nil {
+		// r.Recorder.Eventf(ctx.Dataset, corev1.EventTypeWarning, common.ErrorProcessRuntimeReason, "Process Runtime error %v", err)
+		if utils.IgnoreNotFound(err) == nil {
+			ctx.Log.Info("The dataset is not found", "dataset", ctx.NamespacedName)
+			dataset = nil
+			// return ctrl.Result{}, nil
+		} else {
+			ctx.Log.Error(err, "Failed to get the ddc dataset")
+			return utils.RequeueIfError(errors.Wrap(err, "Unable to get dataset"))
+		}
+	}
+	ctx.Dataset = dataset*/
+
+	// 5.Reconcile delete the runtime
+	// it should be after getting the dataset because need to edit the dataset during deleting
+
+	// 由于删除操作时需要其他资源，所以需要添加finalizer。
+	// 当添加了finalizer之后，删除操作就会转为对deletionTimestamp的操作
+	// 如果deletionTimestamp中的值不为空时，此时表示删除操作已经执行了，此时需要进行reconcile删除操作
+	// 如果deletionTimestamp不为空，此时表示没有执行删除操作，此时需要对资源判断其是否已经添加finalizer
+	if !objectMeta.GetDeletionTimestamp().IsZero() {
+		result, err := r.implement.ReconcileRuntimeDeletion(engine, ctx)
+		if err != nil {
+			r.implement.RemoveEngine(ctx)
+		}
+		return result, err
+	} else { // 无需删除集群，此时判断是否存在Finalizer
+		if !utils.ContainsString(objectMeta.GetFinalizers(), ctx.FinalizerName) {
+			return r.implement.AddFinalizerAndRequeue(ctx, ctx.FinalizerName)
+		} else {
+			ctx.Log.V(1).Info("The finalizer has been added")
+		}
+	}
+
+	/*	if dataset != nil {
+			// 6.Add the OwnerReference of runtime and requeue
+			if !utils.ContainsOwners(objectMeta.GetOwnerReferences(), dataset) {
+				return r.AddOwnerAndRequeue(ctx, dataset)
+			}
+			if !dataset.CanbeBound(ctx.Name, ctx.Namespace, ctx.Category) {
+				ctx.Log.Info("the dataset can't be bound to the runtime, because it's already bound to another runtime ",
+					"dataset", dataset.Name)
+				r.Recorder.Eventf(runtime, corev1.EventTypeWarning,
+					common.ErrorProcessRuntimeReason,
+					"the dataset can't be bound to the runtime, because it's already bound to another runtime %s",
+					dataset.Name)
+				return utils.RequeueAfterInterval(time.Duration(20 * time.Second))
+			}
+			// 7. Add Finalizer of runtime and requeue
+			if !utils.ContainsString(objectMeta.GetFinalizers(), ctx.FinalizerName) {
+				return r.implement.AddFinalizerAndRequeue(ctx, ctx.FinalizerName)
+			} else {
+				ctx.Log.V(1).Info("The finalizer has been added")
+			}
+		} else {
+			// If dataset is nil, need to wait because the user may have not created dataset
+			ctx.Log.Info("No dataset can be bound to the runtime, waiting.")
+			r.Recorder.Event(runtime, corev1.EventTypeWarning, common.ErrorProcessRuntimeReason, "No dataset can be bound to the runtime, waiting.")
+			return utils.RequeueAfterInterval(time.Duration(20 * time.Second))
+		}
+	*/
+	// 8.Start to reconcile runtime
+	return r.implement.ReconcileRuntime(engine, ctx)
+}
+
+// ReconcileRuntimeDeletion reconciles runtime deletion
+func (r *RuntimeReconciler) ReconcileRuntimeDeletion(engine base.Engine, ctx cruntime.ReconcileRequestContext) (ctrl.Result, error) {
+	log := ctx.Log.WithName("reconcileRuntimeDeletion")
+	log.V(1).Info("process the Runtime Deletion", "Runtime", ctx.NamespacedName)
+
+	// 0. Delete the volume
+	/*	err := engine.DeleteVolume()
+		if err != nil {
+			r.Recorder.Eventf(ctx.Runtime, corev1.EventTypeWarning, common.ErrorProcessRuntimeReason, "Failed to delete volume %v", err)
+			// return utils.RequeueIfError(errors.Wrap(err, "Failed to delete volume"))
+			log.Error(err, "Failed to delete volume", "Runtime", ctx.NamespacedName)
+			return utils.RequeueAfterInterval(time.Duration(20 * time.Second))
+		}*/
+
+	// 1. Delete the implementation of the the runtime
+	err := engine.Shutdown()
+	if err != nil {
+		r.Recorder.Eventf(ctx.Runtime, corev1.EventTypeWarning, common.ErrorProcessRuntimeReason, "Failed to shutdown engine %v", err)
+		// return utils.RequeueIfError(errors.Wrap(err, "Failed to shutdown the engine"))
+		log.Error(err, "Failed to shutdown the engine", "Runtime", ctx.NamespacedName)
+		return utils.RequeueAfterInterval(time.Duration(20 * time.Second))
+	}
+
+	/*	// 2. Set the dataset's status as unbound
+		r.implement.RemoveEngine(ctx)
+		// r.removeEngine(engine.ID())
+		dataset := ctx.Dataset.DeepCopy()
+		if dataset != nil {
+			dataset.Status.Phase = datav1alpha1.NotBoundDatasetPhase
+			dataset.Status.UfsTotal = ""
+			dataset.Status.Conditions = []datav1alpha1.DatasetCondition{}
+			dataset.Status.CacheStates = common.CacheStateList{}
+			// dataset.Status.RuntimeName = ""
+			// dataset.Status.RuntimeType = ""
+			// dataset.Status.RuntimeNamespace = ""
+			// if len(dataset.Status.Runtimes) == 0 {
+			dataset.Status.Runtimes = []datav1alpha1.Runtime{}
+			dataset.Status.HCFSStatus = nil
+			dataset.Status.FileNum = ""
+			// }
+
+			if err := r.Status().Update(ctx, dataset); err != nil {
+				log.Error(err, "Failed to unbind the dataset", "dataset", dataset.Name)
+				return utils.RequeueIfError(err)
+			}
+		}*/
+
+	// 3. Remove finalizer
+	r.Log.Info("before clean up finalizer", "runtime", ctx.Runtime)
+	objectMeta, err := r.implement.GetRuntimeObjectMeta(ctx)
+	if err != nil {
+		return utils.RequeueIfError(err)
+	}
+
+	if !objectMeta.GetDeletionTimestamp().IsZero() {
+		finalizers := utils.RemoveString(objectMeta.GetFinalizers(), ctx.FinalizerName)
+		objectMeta.SetFinalizers(finalizers)
+		r.Log.Info("After clean up finalizer", "runtime", ctx.Runtime)
+		if err := r.Update(ctx, ctx.Runtime); err != nil {
+			log.Error(err, "Failed to remove finalizer")
+			return utils.RequeueIfError(err)
+		}
+		ctx.Log.V(1).Info("Finalizer is removed", "runtime", ctx.Runtime)
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// ReconcileRuntime reconciles runtime
+func (r *RuntimeReconciler) ReconcileRuntime(engine base.Engine, ctx cruntime.ReconcileRequestContext) (result ctrl.Result, err error) {
+	var (
+		log = ctx.Log.WithName("reconcileRuntime")
+	)
+	log.V(1).Info("process the Runtime", "Runtime", ctx.NamespacedName)
+
+	// 1.Setup the ddc engine, and wait it ready
+	// if !utils.IsSetupDone(ctx.Dataset) {
+	var alluxioRuntime = &datav1alpha1.AlluxioRuntime{} //TODO 改为对应查看master的状态,后期如果是其他runtime类型就可能需要改了
+	if err := ctx.Get(context.TODO(), ctx.NamespacedName, alluxioRuntime); err != nil {
+		log.Error(err, "Failed to setup the ddc engine")
+	}
+
+	if !(alluxioRuntime.Status.MasterPhase == datav1alpha1.RuntimePhaseReady && (alluxioRuntime.Status.WorkerPhase == datav1alpha1.RuntimePhaseReady ||
+		alluxioRuntime.Status.WorkerPhase == datav1alpha1.RuntimePhasePartialReady)) {
+		ready, err := engine.Setup(ctx)
+		if err != nil {
+			r.Recorder.Eventf(ctx.Runtime, corev1.EventTypeWarning, common.ErrorProcessRuntimeReason, "Failed to setup ddc engine due to error %v", err)
+			log.Error(err, "Failed to setup the ddc engine")
+			// return utils.RequeueIfError(errors.Wrap(err, "Failed to steup the ddc engine"))
+		}
+		if !ready {
+			return utils.RequeueAfterInterval(time.Duration(20 * time.Second))
+		}
+	} else {
+		log.Info("The runtime is already setup.")
+	}
+
+	// 2.Setup the volume
+	/*	err = engine.CreateVolume()
+		if err != nil {
+			r.Recorder.Eventf(ctx.Runtime, corev1.EventTypeWarning, common.ErrorProcessRuntimeReason, "Failed to setup volume due to error %v", err)
+			log.Error(err, "Failed to steup the volume")
+			// return utils.RequeueIfError(errors.Wrap(err, "Failed to steup the ddc engine"))
+		}*/
+
+	// 3.sync up
+	/*	err = engine.Sync(ctx)
+		if err != nil {
+			r.Recorder.Eventf(ctx.Runtime, corev1.EventTypeWarning, common.ErrorProcessRuntimeReason, "Failed to sync the ddc due to %v", err)
+			return utils.RequeueAfterInterval(time.Duration(20 * time.Second))
+		}*/
+
+	return utils.RequeueAfterInterval(time.Duration(20 * time.Second))
+}
+
+// AddFinalizerAndRequeue add  finalizer and requeue
+func (r *RuntimeReconciler) AddFinalizerAndRequeue(ctx cruntime.ReconcileRequestContext, finalizerName string) (ctrl.Result, error) {
+	log := ctx.Log.WithName("AddFinalizerAndRequeue")
+	log.Info("add finalizer and requeue", "Runtime", ctx.NamespacedName)
+	// objectMetaAccessor, isOM := ctx.Runtime.(metav1.ObjectMetaAccessor)
+	// if !isOM {
+	// 	return utils.RequeueIfError(fmt.Errorf("object is not ObjectMetaAccessor"))
+	// }
+	// objectMeta := objectMetaAccessor.GetObjectMeta()
+	objectMeta, err := r.implement.GetRuntimeObjectMeta(ctx)
+	if err != nil {
+		return utils.RequeueIfError(err)
+	}
+	prevGeneration := objectMeta.GetGeneration()
+	objectMeta.SetFinalizers(append(objectMeta.GetFinalizers(), finalizerName))
+	if err := r.Update(ctx, ctx.Runtime); err != nil {
+		ctx.Log.Error(err, "Failed to add finalizer", "StatusUpdateError", ctx)
+		return utils.RequeueIfError(err)
+	}
+	// controllerutil.AddFinalizer(ctx.Runtime, finalizer)
+	currentGeneration := objectMeta.GetGeneration()
+	ctx.Log.Info("RequeueImmediatelyUnlessGenerationChanged", "prevGeneration", prevGeneration,
+		"currentGeneration", currentGeneration)
+
+	return utils.RequeueImmediatelyUnlessGenerationChanged(prevGeneration, currentGeneration)
+}
+
+// AddOwnerAndRequeue add Owner and requeue
+/*func (r *RuntimeReconciler) AddOwnerAndRequeue(ctx cruntime.ReconcileRequestContext, dataset *datav1alpha1.Dataset) (ctrl.Result, error) {
+	objectMeta, err := r.implement.GetRuntimeObjectMeta(ctx)
+	if err != nil {
+		return utils.RequeueIfError(err)
+	}
+	objectMeta.SetOwnerReferences(append(objectMeta.GetOwnerReferences(), metav1.OwnerReference{
+		APIVersion: dataset.APIVersion,
+		Kind:       dataset.Kind,
+		Name:       dataset.Name,
+		UID:        dataset.UID,
+	}))
+	if err := r.Update(ctx, ctx.Runtime); err != nil {
+		ctx.Log.Error(err, "Failed to add ownerreference", "StatusUpdateError", ctx)
+		return utils.RequeueIfError(err)
+	}
+
+	return utils.RequeueImmediately()
+}*/
+
+// GetRuntimeObjectMeta gets runtime object meta
+func (r *RuntimeReconciler) GetRuntimeObjectMeta(ctx cruntime.ReconcileRequestContext) (objectMeta metav1.Object, err error) {
+	objectMetaAccessor, isOM := ctx.Runtime.(metav1.ObjectMetaAccessor)
+	if !isOM {
+		// return utils.RequeueIfError(fmt.Errorf("object is not ObjectMetaAccessor"))
+		err = fmt.Errorf("object is not ObjectMetaAccessor")
+		return
+	}
+	objectMeta = objectMetaAccessor.GetObjectMeta()
+	return
+}
+
+// GetDataset gets the dataset
+/*func (r *RuntimeReconciler) GetDataset(ctx cruntime.ReconcileRequestContext) (*datav1alpha1.Dataset, error) {
+	var dataset datav1alpha1.Dataset
+	if err := r.Get(ctx, ctx.NamespacedName, &dataset); err != nil {
+		return nil, err
+	}
+	return &dataset, nil
+}*/
+
+// The interface of RuntimeReconciler
+type RuntimeReconcilerInterface interface {
+	// ReconcileRuntimeDeletion reconcile runtime deletion
+	ReconcileRuntimeDeletion(engine base.Engine, ctx cruntime.ReconcileRequestContext) (ctrl.Result, error)
+
+	// ReconcileRuntime reconciles runtime
+	ReconcileRuntime(engine base.Engine, ctx cruntime.ReconcileRequestContext) (ctrl.Result, error)
+
+	// AddFinalizerAndRequeue add  finalizer and requeue
+	AddFinalizerAndRequeue(ctx cruntime.ReconcileRequestContext, finalizerName string) (ctrl.Result, error)
+
+	// GetDataset gets the dataset
+	// GetDataset(ctx cruntime.ReconcileRequestContext) (*datav1alpha1.Dataset, error)
+
+	// GetOrCreateEngine gets or creates engine
+	GetOrCreateEngine(
+		ctx cruntime.ReconcileRequestContext) (engine base.Engine, err error)
+
+	// RemoveEngine removes engine
+	RemoveEngine(ctx cruntime.ReconcileRequestContext)
+
+	// GetRuntimeObjectMeta get runtime objectmeta
+	GetRuntimeObjectMeta(ctx cruntime.ReconcileRequestContext) (metav1.Object, error)
+
+	// ReconcileInternal
+	ReconcileInternal(ctx cruntime.ReconcileRequestContext) (ctrl.Result, error)
+}

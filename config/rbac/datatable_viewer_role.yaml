@@ -1,0 +1,20 @@
+# permissions for end users to view datatables.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: datatable-viewer-role
+rules:
+- apiGroups:
+  - data.fluid.io
+  resources:
+  - datatables
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - data.fluid.io
+  resources:
+  - datatables/status
+  verbs:
+  - get

@@ -1,0 +1,10 @@
+domain: fluid.io
+repo: Fluid-Datatable
+resources:
+- group: data
+  kind: DataTable
+  version: v1alpha1
+- group: data
+  kind: AlluxioRuntime
+  version: v1alpha1
+version: "2"

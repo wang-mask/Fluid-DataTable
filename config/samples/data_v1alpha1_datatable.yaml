@@ -1,0 +1,7 @@
+apiVersion: data.fluid.io/v1alpha1
+kind: DataTable
+metadata:
+  name: datatable-sample
+spec:
+  # Add fields here
+  foo: bar
