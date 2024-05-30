@@ -4,14 +4,14 @@
 Fluid-DataTable, a middleware tailored for big data query systems on cloud native platforms, enables efficient table caching access, adaptation, and task scheduling.
 Leveraging the container orchestration platform, Kubernetes, we have implemented our Fluid-DataTable system.
 
-![System overview](.\images\system.png)
+![System overview](./images/system.png)
 
 In the figure above, the query, cache, and storage systems (highlighted in gray) represent existing third-party solutions. All other components, however, are developed as plugins, aiming for seamless integration within the existing Kubernetes ecosystem.
 Moreover, barring the underlying storage system, all components operate in Pod mode.
 In essence, this system comprises three main parts: User Interfaces, Core Components, and Others.
 
 ## System Workflow
-![System overview](.\images\workflow.png)
+![System overview](./images/workflow.png)
 Above figure illustrates the lifecycle of DataTable and its binding workflow with CacheCluster and Query.
 The execution process of the Fluid-DataTable system primarily comprises two stages: preparation and querying.
 
