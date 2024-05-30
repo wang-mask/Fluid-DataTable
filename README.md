@@ -1,6 +1,38 @@
-# Get Started With Fluid-DataTable
+# Introducing Fluid-DataTable
+## System Overview
+ 
+Fluid-DataTable, a middleware tailored for big data query systems on cloud native platforms, enables efficient table caching access, adaptation, and task scheduling.
+Leveraging the container orchestration platform, Kubernetes, we have implemented our Fluid-DataTable system.
 
-This document mainly describes how to deploy Fluid-DataTable with Helm, and use Fluid to create a datatable and speed up your query.  
+![System overview](.\images\system.png)
+
+In the figure above, the query, cache, and storage systems (highlighted in gray) represent existing third-party solutions. All other components, however, are developed as plugins, aiming for seamless integration within the existing Kubernetes ecosystem.
+Moreover, barring the underlying storage system, all components operate in Pod mode.
+In essence, this system comprises three main parts: User Interfaces, Core Components, and Others.
+
+## System Workflow
+![System overview](.\images\workflow.png)
+Above figure illustrates the lifecycle of DataTable and its binding workflow with CacheCluster and Query.
+The execution process of the Fluid-DataTable system primarily comprises two stages: preparation and querying.
+
+### Preparation Phase
+During the preparation phase, users specify their caching requirements through two custom resources: CacheCluster and DataTable.
+
+After deploying a CacheCluster instance, the cachecluster controller initiates the cache system (such as Alluxio) within Kubernetes, based on the user-defined worker count and cache capacity.
+
+Once the cache system is operational and the DataTable is deployed, the datatable controller mounts the data onto the cache system and updates the metadata location from the underlying storage system to the newly launched cache system.
+
+### Querying Phase
+In the querying phase, users deploy a big data query system (such as Presto).Through the Query custom resource, users specify query tasks to be executed.
+
+These tasks are then prioritized by the query controller based on the cache status and then submitted to the big data query engine.
+
+During the execution, the datatable controller utilizes the cache admission module to prioritize the mounting of high-value data based on calculated acceleration gain.
+
+Additionally, the cache adaptation module dynamically adjusts the number of replicas and cache workers for the cached table data based on estimated access frequencies.
+
+# Get Started With Fluid-DataTable
+This document mainly describes how to deploy Fluid-DataTable with Helm, and use Fluid to create a datatable and speed up your query.
 
 ## Requirements  
 
